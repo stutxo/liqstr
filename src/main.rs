@@ -1,7 +1,9 @@
-use elements::{bech32::Fe32, Address, AddressParams, Script};
+use std::str::FromStr;
+
+use elements::{schnorr::UntweakedPublicKey, secp256k1_zkp::Secp256k1, Address, AddressParams};
 use leptos::{mount_to_body, view};
 use log::{error, info};
-use nostr::{key::PublicKey as NostrPubKey, util::hex};
+use nostr::{key::PublicKey as NostrPubKey, nips::nip19::FromBech32};
 
 fn main() {
     _ = console_log::init_with_level(log::Level::Debug);
@@ -11,35 +13,24 @@ fn main() {
 
     info!("Nostr npub: {}", npub);
 
-    let nostr_pub_key = NostrPubKey::parse(npub);
+    let nostr_pub_key = NostrPubKey::from_bech32(npub);
 
     match nostr_pub_key {
-        Ok(pubkey) => {
-            let pubkey_to_hex = pubkey.to_string();
+        Ok(pubkey_hex) => {
+            info!("Public key hex: {}", pubkey_hex);
+            let pubkey_string: String = pubkey_hex.to_string();
 
-            info!("Nostr Public Key (as hex): {}", pubkey_to_hex);
+            let internal_key = UntweakedPublicKey::from_str(&pubkey_string).unwrap();
+            let secp = Secp256k1::verification_only();
 
-            match hex::decode(&pubkey_to_hex) {
-                Ok(pubkey_bytes) => {
-                    let witness_version = Fe32::from(elements::bitcoin::WitnessVersion::V0);
+            let p2tr_address =
+                Address::p2tr(&secp, internal_key, None, None, &AddressParams::LIQUID);
 
-                    info!("witness_version: {}", witness_version);
+            let display_text = format!("liquid taproot address: {}", p2tr_address);
 
-                    let script_pubkey = Script::new_witness_program(witness_version, &pubkey_bytes);
+            info!("{}", display_text);
 
-                    info!("script_pubkey: {}", script_pubkey);
-
-                    let address = Address::p2wsh(&script_pubkey, None, &AddressParams::LIQUID);
-
-                    info!("liquid address: {}", address);
-
-                    let display_text = format!("Liquid Address: {}", address);
-                    mount_to_body(|| view! { <p>{ display_text }</p> });
-                }
-                Err(e) => {
-                    error!("Failed to decode hex: {}", e);
-                }
-            }
+            mount_to_body(|| view! { <p>{ display_text }</p> });
         }
         Err(e) => {
             error!("Failed to parse Nostr Public Key: {}", e);
