@@ -1,6 +1,10 @@
 use std::str::FromStr;
 
-use elements::{schnorr::UntweakedPublicKey, secp256k1_zkp::Secp256k1, Address, AddressParams};
+use elements::{
+    schnorr::UntweakedPublicKey,
+    secp256k1_zkp::{Parity, Secp256k1},
+    Address, AddressParams,
+};
 use leptos::{mount_to_body, view};
 use log::{error, info};
 use nostr::{key::PublicKey as NostrPubKey, nips::nip19::FromBech32};
@@ -13,24 +17,38 @@ fn main() {
 
     info!("Nostr npub: {}", npub);
 
-    let nostr_pub_key = NostrPubKey::from_bech32(npub);
-
-    match nostr_pub_key {
-        Ok(pubkey_hex) => {
-            info!("Public key hex: {}", pubkey_hex);
-            let pubkey_string: String = pubkey_hex.to_string();
-
+    match NostrPubKey::from_bech32(npub) {
+        Ok(pubkey_xor) => {
+            let pubkey_string: String = pubkey_xor.to_string();
+            info!("Public Key Xor {}", pubkey_xor);
+            info!("Public Key Hex {}", pubkey_string);
             let internal_key = UntweakedPublicKey::from_str(&pubkey_string).unwrap();
             let secp = Secp256k1::verification_only();
 
-            let p2tr_address =
+            let unblinded_p2tr_address =
                 Address::p2tr(&secp, internal_key, None, None, &AddressParams::LIQUID);
 
-            let display_text = format!("liquid taproot address: {}", p2tr_address);
+            let blinder = pubkey_xor.public_key(Parity::Odd);
+            info!("Blinder Public Key: {}", blinder.to_string());
 
-            info!("{}", display_text);
+            let blinded_p2tr_address = Address::p2tr(
+                &secp,
+                internal_key,
+                None,
+                Some(blinder),
+                &AddressParams::LIQUID,
+            );
 
-            mount_to_body(|| view! { <p>{ display_text }</p> });
+            let npub_text = format!("Nostr public key: {}", npub);
+            let unblinded_text = format!(
+                "Unblinded liquid taproot address: {}",
+                unblinded_p2tr_address
+            );
+            let blinded_text = format!("Blinded liquid taproot address: {}", blinded_p2tr_address);
+
+            mount_to_body(
+                || view! {<p>{ npub_text }</p><p>{ unblinded_text }</p><p>{ blinded_text }</p>},
+            );
         }
         Err(e) => {
             error!("Failed to parse Nostr Public Key: {}", e);
